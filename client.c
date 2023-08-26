@@ -14,10 +14,18 @@
 int main(){
     //creating a socket
     int network_socket;
+
     // type: SOCK_STREAM = tcp or SOCK_DGRAM = udp 
     // domain: AF_INET for ipv4
+    // basically declaring a socket
     // socket(domain, type, protocol)
 	network_socket = socket(AF_INET,SOCK_STREAM,0);
+
+    // cheking for erros
+    if(network_socket < 0){
+        printf("socket could not be created\n");
+        return 0;
+    }
 
     //specifying address for socket to connect to
     struct sockaddr_in server_address;

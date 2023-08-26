@@ -13,6 +13,7 @@
  */
 
 void main(){
+    // creating a socket
     int network_socket;
 
     // type: SOCK_STREAM = tcp or SOCK_DGRAM = udp 
@@ -27,7 +28,7 @@ void main(){
         return;
     }
     
-    //specifying address for socket to connect to
+    //specifying address for server
     struct sockaddr_in server_address;
     server_address.sin_family = AF_INET;
     server_address.sin_port = htons(9000);
@@ -42,12 +43,12 @@ void main(){
         return;
     }
 
-    // start listening for incoming data
+    // prepare to accept incoming connections
     // listen(socket, no of connections)
     listen(network_socket, 5);
 
-    // accept
-    // stores the client's address in struct client_address
+    // accept connection
+    // struct client_address used to store incoming clients data
     struct sockaddr_in client_address;
     int client_address_size =  sizeof(client_address);
     int new_socket = accept(network_socket, (struct sockaddr*) &client_address, &client_address_size);
@@ -56,6 +57,8 @@ void main(){
         printf("error on accept\n");
         return;
     }
+
+    // sending data
     char buff[256] = "arey vedya!!";
     int n = send(new_socket, buff, 256, 0);
 
