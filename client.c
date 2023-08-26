@@ -6,12 +6,18 @@
 
 #include<netinet/in.h>
 
+/*
+ * client side flow
+ * socket()  -->  connect()  -->  write()/read()  -->  close
+ */
+
 int main(){
     //creating a socket
     int network_socket;
-    //SOCK_STREAM = tcp
-    //AF_INET for ipv4
-    network_socket = socket(AF_INET,SOCK_STREAM,0);
+    // type: SOCK_STREAM = tcp or SOCK_DGRAM = udp 
+    // domain: AF_INET for ipv4
+    // socket(domain, type, protocol)
+	network_socket = socket(AF_INET,SOCK_STREAM,0);
 
     //specifying address for socket to connect to
     struct sockaddr_in server_address;
