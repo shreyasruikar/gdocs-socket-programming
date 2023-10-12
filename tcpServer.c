@@ -1,4 +1,138 @@
-#include <sys/socket.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <pthread.h>
+
+#define PORT 12345
+#define MAX_CLIENTS 10
+#define BUFFER_SIZE 2048
+
+static int client_count = 0;
+static int uid = 10;
+
+typedef struct {
+    int sockfd;
+    int uid;
+} client_t;
+
+client_t* clients[MAX_CLIENTS];
+pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void broadcast(char *message, int uid) {
+    pthread_mutex_lock(&clients_mutex);
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (clients[i] && clients[i]->uid != uid) {
+            if (write(clients[i]->sockfd, message, strlen(message)) < 0) {
+                perror("Error writing to client socket");
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&clients_mutex);
+}
+
+void *handle_client(void *arg) {
+    client_count++;
+    client_t *client = (client_t *)arg;
+    int uid = client->uid;
+    char message[BUFFER_SIZE];
+
+    // Handle client communication
+    while (1) {
+        int read_size = read(client->sockfd, message, BUFFER_SIZE);
+        if (read_size <= 0) {
+            // Client has disconnected
+            pthread_mutex_lock(&clients_mutex);
+            for (int i = 0; i < MAX_CLIENTS; i++) {
+                if (clients[i] && clients[i]->uid == uid) {
+                    clients[i] = NULL;
+                    break;
+                }
+            }
+            pthread_mutex_unlock(&clients_mutex);
+            close(client->sockfd);
+            free(client);
+            client_count--;
+            pthread_exit(NULL);
+        } else {
+            message[read_size] = '\0';
+            broadcast(message, uid);
+        }
+    }
+    return NULL;
+}
+
+int main() {
+    int server_socket, client_socket;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t addr_size;
+    pthread_t thread_id;
+
+    // Create socket
+    server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket < 0) {
+        perror("Error creating socket");
+        exit(EXIT_FAILURE);
+    }
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+
+    // Bind socket
+    if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Error binding socket");
+        exit(EXIT_FAILURE);
+    }
+
+    // Listen for incoming connections
+    if (listen(server_socket, MAX_CLIENTS) == 0) {
+        printf("Server listening on port %d...\n", PORT);
+    } else {
+        perror("Error listening");
+        exit(EXIT_FAILURE);
+    }
+
+    // Accept client connections and create threads
+    while (1) {
+        addr_size = sizeof(client_addr);
+        client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &addr_size);
+
+        // Limit the number of clients
+        if (client_count >= MAX_CLIENTS) {
+            printf("Too many clients. Connection rejected.\n");
+            close(client_socket);
+            continue;
+        }
+
+        // Create a new client structure and thread to handle the connection
+        client_t *client = (client_t *)malloc(sizeof(client_t));
+        client->sockfd = client_socket;
+        client->uid = uid++;
+        
+        // Add client to the array and create a thread
+        pthread_mutex_lock(&clients_mutex);
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            if (!clients[i]) {
+                clients[i] = client;
+                pthread_create(&thread_id, NULL, handle_client, (void *)client);
+                break;
+            }
+        }
+        pthread_mutex_unlock(&clients_mutex);
+    }
+
+    return 0;
+}
+
+
+
+
+// Previous server code
+
+/*#include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <stdio.h>
@@ -16,7 +150,7 @@
 static _Atomic unsigned int cli_count = 0;
 static int uid = 10;
 
-/* Client structure */
+
 typedef struct{
 	struct sockaddr_in address;
 	int sockfd;
@@ -51,7 +185,7 @@ void print_client_addr(struct sockaddr_in addr){
         (addr.sin_addr.s_addr & 0xff000000) >> 24);
 }
 
-/* Add clients to queue */
+
 void queue_add(client_t *cl){
 	pthread_mutex_lock(&clients_mutex);
 
@@ -65,7 +199,7 @@ void queue_add(client_t *cl){
 	pthread_mutex_unlock(&clients_mutex);
 }
 
-/* Remove clients to queue */
+
 void queue_remove(int uid){
 	pthread_mutex_lock(&clients_mutex);
 
@@ -81,7 +215,7 @@ void queue_remove(int uid){
 	pthread_mutex_unlock(&clients_mutex);
 }
 
-/* Send message to all clients except sender */
+
 void send_message(char *s, int uid){
 	pthread_mutex_lock(&clients_mutex);
 
@@ -99,7 +233,7 @@ void send_message(char *s, int uid){
 	pthread_mutex_unlock(&clients_mutex);
 }
 
-/* Handle all communication with the client */
+
 void *handle_client(void *arg){
 	char buff_out[BUFFER_SZ];
 	char name[32];
@@ -147,7 +281,7 @@ void *handle_client(void *arg){
 		bzero(buff_out, BUFFER_SZ);
 	}
 
-  /* Delete client from queue and yield thread */
+  
 	close(cli->sockfd);
   queue_remove(cli->uid);
   free(cli);
@@ -171,13 +305,13 @@ int main(int argc, char **argv){
   struct sockaddr_in cli_addr;
   pthread_t tid;
 
-  /* Socket settings */
+  /* Socket settings 
   listenfd = socket(AF_INET, SOCK_STREAM, 0);
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_addr.s_addr = inet_addr(ip);
   serv_addr.sin_port = htons(port);
 
-  /* Ignore pipe signals */
+  /* Ignore pipe signals 
 	signal(SIGPIPE, SIG_IGN);
 
 	if(setsockopt(listenfd, SOL_SOCKET,(SO_REUSEPORT | SO_REUSEADDR),(char*)&option,sizeof(option)) < 0){
@@ -185,13 +319,13 @@ int main(int argc, char **argv){
     return EXIT_FAILURE;
 	}
 
-	/* Bind */
+	/* Bind 
   if(bind(listenfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
     perror("ERROR: Socket binding failed");
     return EXIT_FAILURE;
   }
 
-  /* Listen */
+  /* Listen 
   if (listen(listenfd, 10) < 0) {
     perror("ERROR: Socket listening failed");
     return EXIT_FAILURE;
@@ -203,7 +337,7 @@ int main(int argc, char **argv){
 		socklen_t clilen = sizeof(cli_addr);
 		connfd = accept(listenfd, (struct sockaddr*)&cli_addr, &clilen);
 
-		/* Check if max clients is reached */
+		/* Check if max clients is reached 
 		if((cli_count + 1) == MAX_CLIENTS){
 			printf("Max clients reached. Rejected: ");
 			print_client_addr(cli_addr);
@@ -212,19 +346,19 @@ int main(int argc, char **argv){
 			continue;
 		}
 
-		/* Client settings */
+		/* Client settings 
 		client_t *cli = (client_t *)malloc(sizeof(client_t));
 		cli->address = cli_addr;
 		cli->sockfd = connfd;
 		cli->uid = uid++;
 
-		/* Add client to the queue and fork thread */
+		/* Add client to the queue and fork thread 
 		queue_add(cli);
 		pthread_create(&tid, NULL, &handle_client, (void*)cli);
 
-		/* Reduce CPU usage */
+		/* Reduce CPU usage
 		sleep(1);
 	}
 
 	return EXIT_SUCCESS;
-}
+} */

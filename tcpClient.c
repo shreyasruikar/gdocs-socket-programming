@@ -1,6 +1,138 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <pthread.h>
+
+#define PORT 12345
+#define MAX_CLIENTS 10
+#define BUFFER_SIZE 2048
+
+static int client_count = 0;
+static int uid = 10;
+
+typedef struct {
+    int sockfd;
+    int uid;
+} client_t;
+
+client_t* clients[MAX_CLIENTS];
+pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void broadcast(char *message, int uid) {
+    pthread_mutex_lock(&clients_mutex);
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (clients[i] && clients[i]->uid != uid) {
+            if (write(clients[i]->sockfd, message, strlen(message)) < 0) {
+                perror("Error writing to client socket");
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&clients_mutex);
+}
+
+void *handle_client(void *arg) {
+    client_count++;
+    client_t *client = (client_t *)arg;
+    int uid = client->uid;
+    char message[BUFFER_SIZE];
+
+    // Handle client communication
+    while (1) {
+        int read_size = read(client->sockfd, message, BUFFER_SIZE);
+        if (read_size <= 0) {
+            // Client has disconnected
+            pthread_mutex_lock(&clients_mutex);
+            for (int i = 0; i < MAX_CLIENTS; i++) {
+                if (clients[i] && clients[i]->uid == uid) {
+                    clients[i] = NULL;
+                    break;
+                }
+            }
+            pthread_mutex_unlock(&clients_mutex);
+            close(client->sockfd);
+            free(client);
+            client_count--;
+            pthread_exit(NULL);
+        } else {
+            message[read_size] = '\0';
+            broadcast(message, uid);
+        }
+    }
+    return NULL;
+}
+
+int main() {
+    int server_socket, client_socket;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t addr_size;
+    pthread_t thread_id;
+
+    // Create socket
+    server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket < 0) {
+        perror("Error creating socket");
+        exit(EXIT_FAILURE);
+    }
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+
+    // Bind socket
+    if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Error binding socket");
+        exit(EXIT_FAILURE);
+    }
+
+    // Listen for incoming connections
+    if (listen(server_socket, MAX_CLIENTS) == 0) {
+        printf("Server listening on port %d...\n", PORT);
+    } else {
+        perror("Error listening");
+        exit(EXIT_FAILURE);
+    }
+
+    // Accept client connections and create threads
+    while (1) {
+        addr_size = sizeof(client_addr);
+        client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &addr_size);
+
+        // Limit the number of clients
+        if (client_count >= MAX_CLIENTS) {
+            printf("Too many clients. Connection rejected.\n");
+            close(client_socket);
+            continue;
+        }
+
+        // Create a new client structure and thread to handle the connection
+        client_t *client = (client_t *)malloc(sizeof(client_t));
+        client->sockfd = client_socket;
+        client->uid = uid++;
+        
+        // Add client to the array and create a thread
+        pthread_mutex_lock(&clients_mutex);
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            if (!clients[i]) {
+                clients[i] = client;
+                pthread_create(&thread_id, NULL, handle_client, (void *)client);
+                break;
+            }
+        }
+        pthread_mutex_unlock(&clients_mutex);
+    }
+
+    return 0;
+}
+
+
+// Previous basic server code 
+
+/* #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <signal.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -96,7 +228,7 @@ int main(int argc, char **argv){
 
 	struct sockaddr_in server_addr;
 
-	/* Socket settings */
+	 Socket settings 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = inet_addr(ip);
@@ -137,4 +269,4 @@ int main(int argc, char **argv){
 	close(sockfd);
 
 	return EXIT_SUCCESS;
-}
+} */
