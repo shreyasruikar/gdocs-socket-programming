@@ -12,6 +12,7 @@
 
 #define MAX_CLIENTS 100
 #define BUFFER_SZ 2048
+#define NOTE_FILE "notes.txt"
 
 static _Atomic unsigned int cli_count = 0;
 static int uid = 10;
@@ -61,6 +62,17 @@ void queue_add(client_t *cl) {
     }
 
     pthread_mutex_unlock(&clients_mutex);
+}
+
+void save_note_to_file(char *note) {
+    FILE *file = fopen(NOTE_FILE, "a");
+    if (file == NULL) {
+        perror("ERROR: opening file");
+        return;
+    }
+    
+    fprintf(file, "%s\n", note);
+    fclose(file);
 }
 
 void queue_remove(int uid) {
@@ -121,7 +133,7 @@ void *handle_client(void *arg) {
         int receive = recv(cli->sockfd, buff_out, BUFFER_SZ, 0);
         if (receive > 0) {
             if (strlen(buff_out) > 0) {
-                send_message(buff_out, cli->uid);
+                save_note_to_file(buff_out);
 
                 str_trim_lf(buff_out, strlen(buff_out));
                 printf("[%s] posts a note: %s\n", cli->name, buff_out);
